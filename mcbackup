@@ -1,0 +1,147 @@
+#!/bin/bash
+
+
+
+
+
+# CONFIGS
+
+#worldsLocation="~/minecraft/worlds"
+#backupLocation="~/minecraft/backups"
+interactive=
+fatalError=
+worlds=()
+worldCount=${#worlds[@]}
+
+
+
+
+
+# FUNCTIONS
+
+function showError () {
+	case $1 in
+		backupLocation )	echo "There is no backup location set. Choose your backup folder with -b.";;
+		worldsLocation )	echo "There is no worlds location set. Choose your worlds folder with -w.";;
+		worldNotFound )		echo "The world ${2} could not be found.";;
+	esac
+	echo ""
+}
+
+function getTimestamp () {
+	date +%s
+}
+
+function createBackup () {
+	worldName=$1
+	fullWorldPath=$(readlink -f $i)
+	if [ -d $worldName ]; then
+		timestamp=$(getTimestamp)
+
+		echo "Backing up world: ${i}"
+		zip -r ${backupLocation}/${worldName}-${timestamp}.zip ${worldsLocation}/${worldName}
+		echo ""
+	else
+		failedBackups[${#failedBackups[@]}]=$i
+		showError worldNotFound $i
+	fi
+}
+
+function createBackups () {
+	for i in ${worlds[@]}; do
+		createBackup $i
+	done
+}
+
+function startBackup () {
+	if [ "${#worlds[@]}" == "0" ]; then
+		cd $worldsLocation
+		for i in $(find * -maxdepth 0 -type d); do
+			worlds[${worldCount}]=$i
+			worldCount=${#worlds[@]}
+		done
+	fi
+
+	createBackups
+}
+
+function checkForSyntaxErrors () {
+	if [ ! $worldsLocation ]; then
+		showError worldsLocation
+		fatalError=1
+	fi
+
+	if [ ! $backupLocation ]; then
+		showError backupLocation
+		fatalError=1
+	fi
+
+	if [ "$fatalError" == "1" ]; then
+		echo "Please fix the errors listed above and try again."
+		exit 1
+	else
+        	echo "Backup Location: ${backupLocation}"
+        	echo "Worlds Location: ${worldsLocation}"
+		echo ""
+		startBackup
+	fi
+}
+
+
+
+
+
+# EXECUTION
+
+if [ ! -d ${backupLocation} ]; then
+	mkdir backup
+fi
+
+while [ "$1" != "" ]; do
+	case $1 in
+		-s | --schedule )	shift
+					schedule $1
+					;;
+		-b | --backup )		shift
+					backupLocation=$(readlink -f $1)
+					;;
+
+		-w | --worlds )		shift
+					worldsLocation=$(readlink -f $1)
+					;;
+
+		-i | --interactive )	interactive=1
+					;;
+
+		--save )		makeConfig=1
+					;;
+
+		* )			worlds[${worldCount}]=$1
+					worldCount=${#worlds[@]}
+					;;
+	esac
+	shift
+done
+
+checkForSyntaxErrors
+
+if [ $makeConfig -gt 0 ]; then
+	if [ ! -f ~/.mcbackup_config ]; then
+		touch ~/.mcbackup_config
+	fi
+
+	config=$(cat ~/.mcbackup_config)
+	newConfig = sed -e '/ABD/XYZ/' $config
+fi
+
+if [ ${#failedBackups[@]} -gt 0 ]; then
+	echo "Uh oh, it looks like we had some problems:"
+	echo "The following worlds failed to backup:"
+	for i in ${failedBackups[@]}; do
+		echo "- ${i}"
+	done
+else
+	echo "Success! No errors were encountered and all of your world backups can be found at ${backupLocation}."
+fi
+
+exit 0
